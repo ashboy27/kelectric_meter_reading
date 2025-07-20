@@ -16,9 +16,9 @@ class MeterOut(BaseModel):
 class EntryOut(BaseModel):
     id: UUID
     date: datetime.date
-    time: datetime.datetime      # NEW: full timestamp
+    time: datetime.datetime     
     reading: float
-    posted_by: str
+
 
 class MonthlyData(BaseModel):
     start_reading: float

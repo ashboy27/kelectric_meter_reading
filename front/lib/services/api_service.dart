@@ -63,13 +63,14 @@ class ApiService {
 
 
   Future<int> postEntry(
-      String meterId, String dateIso, String name, double reading) async {
+      String meterId, String dateIso, String name, double reading, String postingDate) async {
     final uri = Uri.parse(
         '$BASE_URL/home/$HOME_ID/meters/$meterId/entries');
     final body = json.encode({
       'date': dateIso,
       'name': name,
       'reading': reading,
+      'posting_date': postingDate,
     });
     final res = await _client.post(
       uri,

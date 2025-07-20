@@ -176,6 +176,7 @@ def add_reading(
     reading_date: datetime.date,
     reading_val: float,
     posted_by: str,
+    reading_time: datetime.datetime
 ) -> int:
     with Session(engine) as sess:
         m = sess.get(models.Meter, meter_id)
@@ -249,6 +250,7 @@ def add_reading(
             reading_date=reading_date,
             reading_value=reading_val,
             posted_by=posted_by,
+            reading_time=reading_time,
         )
         sess.add(r)
         sess.commit()

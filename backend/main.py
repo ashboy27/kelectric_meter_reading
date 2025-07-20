@@ -53,14 +53,20 @@ def post_start(
     )
     return {"status": "ok"}
 
+from typing_extensions import Optional
 @app.post("/home/{home_id}/meters/{meter_id}/entries")
 def post_entry(
     meter_id: str,
     date: datetime.date = Body(..., embed=True),
     reading: float = Body(..., embed=True),
-    name: str = Body(..., embed=True),             # NEW
+    name: str = Body(..., embed=True),
+    posting_date: Optional[datetime.date] = Body(None, embed=True)
 ):
-    level = crud.add_reading(meter_id, date, reading, name)
+    reading_time = datetime.datetime.combine(
+        posting_date if posting_date else datetime.date.today(),
+        datetime.datetime.now().time()
+    )
+    level = crud.add_reading(meter_id, date, reading, name, reading_time)
     return {"status": "ok", "level": level}
 
 

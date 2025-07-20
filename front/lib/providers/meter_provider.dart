@@ -116,7 +116,7 @@ class MeterProvider extends ChangeNotifier {
   }
 
   Future<int> addEntry(
-      String meterId, int year, int month, String name, double value) async {
+      String meterId, int year, int month, String name, double value,String postingDate) async {
 
     final key = _key(meterId, year, month);
     final start = _starts[key];
@@ -127,11 +127,11 @@ class MeterProvider extends ChangeNotifier {
     final now = DateTime.now();
     final dayStr   = now.day.toString().padLeft(2, '0');
     final monthStr = month.toString().padLeft(2, '0');
-    final yearStr  = year.toString();                       
+    final yearStr  = year.toString();
     final isoDate  = '$yearStr-$monthStr-$dayStr';
 
     try {
-      final level = await _api.postEntry(meterId, isoDate, name, value);
+      final level = await _api.postEntry(meterId, isoDate, name, value,postingDate);
 
       // reload from server rather than optimistic insert
       await loadMonthly(meterId, year, month);
