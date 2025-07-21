@@ -142,18 +142,24 @@ class _MeterDetailScreenState extends State<MeterDetailScreen>
                 Expanded(
                   child: DropdownButtonFormField<int>(
                     decoration: const InputDecoration(labelText: 'Month'),
-                    value: null, // no pre‐selection
-                    items: prov.getMonthNames().asMap().entries.map((e) {
-                      return DropdownMenuItem(
-                        value: e.key + 1,       // 1..12
-                        child: Text(e.value),   // January, February, …
-                      );
-                    }).toList(),
+                    // pre‑select the current posting‑month number if you like:
+                    value: _postingMonthController.text.isNotEmpty
+                        ? int.tryParse(_postingMonthController.text)
+                        : null,
+                    items: List.generate(12, (i) => i + 1)
+                        .map((m) => DropdownMenuItem(
+                      value: m,
+                      child: Text(m.toString().padLeft(2, '0')), // "01", "02", … "12"
+                    ))
+                        .toList(),
                     onChanged: (sel) {
-                      _postingMonthController.text = sel.toString();
+                      if (sel != null) {
+                        _postingMonthController.text = sel.toString();
+                      }
                     },
                   ),
                 ),
+
                 const SizedBox(width: 8),
                 Expanded(
                   child: TextField(
@@ -179,7 +185,7 @@ class _MeterDetailScreenState extends State<MeterDetailScreen>
               final dayStr = _postingDayController.text.trim();
               final monthStr = _postingMonthController.text.trim();
               final yearStr = _postingYearController.text.trim();
-
+              debugPrint("ASHAR2: $dayStr, $monthStr, $yearStr");
               final anyFilled = dayStr.isNotEmpty || monthStr.isNotEmpty || yearStr.isNotEmpty;
               final allFilled = dayStr.isNotEmpty && monthStr.isNotEmpty && yearStr.isNotEmpty;
 
@@ -198,6 +204,7 @@ class _MeterDetailScreenState extends State<MeterDetailScreen>
                 return;
               }
               if (allFilled) {
+
               final day   = int.tryParse(dayStr);
               final month = int.tryParse(monthStr);
               final year  = int.tryParse(yearStr);
@@ -248,11 +255,13 @@ class _MeterDetailScreenState extends State<MeterDetailScreen>
 
     // Determine postingDate
     DateTime postingDate;
+    debugPrint("ASHAR1");
     if (dayStr.isEmpty && monthStr.isEmpty && yearStr.isEmpty) {
       postingDate = DateTime.now();
+
     } else {
       final d = int.tryParse(dayStr);
-      final m = _monthStringToInt(monthStr);
+      final m = int.tryParse(monthStr);
       final y = int.tryParse(yearStr);
       if (d == null || m == null || y == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -261,8 +270,8 @@ class _MeterDetailScreenState extends State<MeterDetailScreen>
         return;
       }
       // preserve current time-of-day
-      final now = DateTime.now();
-      postingDate = DateTime(y, m, d, now.hour, now.minute, now.second);
+
+      postingDate = DateTime(y, m, d);
     }
 
     // Build the ISO strings

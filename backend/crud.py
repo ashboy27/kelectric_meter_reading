@@ -210,26 +210,26 @@ def add_reading(
         start_val = sr.reading_value
 
         # Get previous most entry for this month
-        prev_entry = sess.exec(
-            select(models.Reading)
-            .where(
-                models.Reading.meter_id == meter_id,
-                models.Reading.reading_date >= datetime.date(y, mo, 1),
-                models.Reading.reading_date <= reading_date,
-            )
-            .order_by(
-                models.Reading.reading_date.desc(), models.Reading.reading_time.desc()
-            )
-        ).first()
+        # prev_entry = sess.exec(
+        #     select(models.Reading)
+        #     .where(
+        #         models.Reading.meter_id == meter_id,
+        #         models.Reading.reading_date >= datetime.date(y, mo, 1),
+        #         models.Reading.reading_date <= reading_date,
+        #     )
+        #     .order_by(
+        #         models.Reading.reading_date.desc(), models.Reading.reading_time.desc()
+        #     )
+        # ).first()
 
-        prev_val = prev_entry.reading_value if prev_entry else start_val
+        # prev_val = prev_entry.reading_value if prev_entry else start_val
 
-        # Enforce that new reading is not less than previous
-        if reading_val < prev_val:
-            raise HTTPException(
-                status_code=400,
-                detail=f"New reading ({reading_val}) cannot be less than previous ({prev_val}).",
-            )
+        # # Enforce that new reading is not less than previous
+        # if reading_val < prev_val:
+        #     raise HTTPException(
+        #         status_code=400,
+        #         detail=f"New reading ({reading_val}) cannot be less than previous ({prev_val}).",
+        #     )
 
         # Enforce freeze on primary meter
         new_total = reading_val - start_val

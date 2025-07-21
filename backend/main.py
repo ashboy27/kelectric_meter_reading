@@ -54,6 +54,13 @@ def post_start(
     return {"status": "ok"}
 
 from typing_extensions import Optional
+import pytz
+
+# Define Pakistan timezone
+pk_tz = pytz.timezone('Asia/Karachi')
+
+
+
 @app.post("/home/{home_id}/meters/{meter_id}/entries")
 def post_entry(
     meter_id: str,
@@ -61,11 +68,14 @@ def post_entry(
     reading: float = Body(..., embed=True),
     name: str = Body(..., embed=True),
     posting_date: Optional[datetime.date] = Body(None, embed=True)
-):
+):  
+    # Current time in Pakistan
+    now_in_pk = datetime.datetime.now(pk_tz)
     reading_time = datetime.datetime.combine(
-        posting_date if posting_date else datetime.date.today(),
-        datetime.datetime.now().time()
+    posting_date if posting_date else now_in_pk.date(),
+    now_in_pk.time()
     )
+    print(reading_time)
     level = crud.add_reading(meter_id, date, reading, name, reading_time)
     return {"status": "ok", "level": level}
 
