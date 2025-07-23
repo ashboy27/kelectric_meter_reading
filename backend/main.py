@@ -105,3 +105,7 @@ def delete_entry(
 ):
     crud.delete_entry(entry_id)
     return {"status": "deleted"}
+
+@app.get("/")
+def root():
+    return {"status": "alive"}
