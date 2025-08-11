@@ -576,10 +576,34 @@ class _MeterDetailScreenState extends State<MeterDetailScreen>
                     Expanded(
                       flex: 2,
                       child: DropdownButtonFormField<int>(
-                        decoration: _inputStyle('Month'),
+                        decoration: _inputStyle('Month').copyWith(
+                          focusedBorder: OutlineInputBorder(
+                            borderSide: BorderSide(color: primaryColor, width: 2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
                         value: selectedMonth,
+                        style: TextStyle(
+                          color: primaryColor, // Highlight selected month with primary color
+                          fontWeight: FontWeight.bold, // Make selected month bold
+                          fontSize: 16,
+                        ),
+                        dropdownColor: Colors.white,
                         items: prov.getMonthNames().asMap().entries.map((e) {
-                          return DropdownMenuItem(value: e.key + 1, child: Text(_monthStringToInt(e.key)));
+                          return DropdownMenuItem<int>(
+                            value: e.key + 1,
+                            child: Text(
+                              _monthStringToInt(e.key),
+                              style: TextStyle(
+                                color: (e.key + 1) == selectedMonth
+                                    ? primaryColor // Highlight selected month in dropdown
+                                    : Colors.black, // Non-selected items
+                                fontWeight: (e.key + 1) == selectedMonth
+                                    ? FontWeight.bold // Bold for selected month
+                                    : FontWeight.normal,
+                              ),
+                            ),
+                          );
                         }).toList(),
                         onChanged: (v) {
                           if (v != null) {
