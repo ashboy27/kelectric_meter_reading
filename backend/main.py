@@ -1,4 +1,3 @@
-# main.py  (replace or merge into your existing file)
 
 from fastapi import FastAPI, Depends, Body, Query, Path
 from fastapi.middleware.cors import CORSMiddleware
@@ -61,6 +60,13 @@ pk_tz = pytz.timezone('Asia/Karachi')
 
 
 
+from typing import Optional
+import datetime
+from fastapi import Body, HTTPException
+
+# assume pk_tz is defined earlier (your PK timezone, e.g. pytz.timezone("Asia/Karachi"))
+# from your code it looked like you have pk_tz variable already
+
 @app.post("/home/{home_id}/meters/{meter_id}/entries")
 def post_entry(
     meter_id: str,
@@ -69,6 +75,7 @@ def post_entry(
     name: str = Body(..., embed=True),
     posting_date: Optional[datetime.date] = Body(None, embed=True)
 ):  
+    import datetime
     # Current time in Pakistan
     now_in_pk = datetime.datetime.now(pk_tz)
     reading_time = datetime.datetime.combine(
@@ -78,6 +85,7 @@ def post_entry(
     print(reading_time)
     level = crud.add_reading(meter_id, date, reading, name, reading_time)
     return {"status": "ok", "level": level}
+
 
 
 @app.get("/ping-db")
@@ -105,3 +113,42 @@ def delete_entry(
 ):
     crud.delete_entry(entry_id)
     return {"status": "deleted"}
+
+
+
+from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
+from excel_service import ExcelExportService
+import io
+import crud
+import models
+from database import engine
+from sqlalchemy.orm import Session
+
+
+@app.get("/home/{home_id}/meters/{meter_id}/export-excel")
+async def export_meter_excel(
+    home_id: str,
+    meter_id: str,
+    meter_name:str,
+    year: int = datetime.datetime.now().year
+):
+    """Export meter readings to Excel for a specific year"""
+    try:
+        # All the heavy lifting is done in crud.py
+        excel_buffer = crud.create_excel_export(meter_id, year)
+        
+        # Create filename
+        filename = f"{meter_name}_{year}_readings.xlsx"
+        
+        return StreamingResponse(
+            io.BytesIO(excel_buffer.read()),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}",
+                "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            }
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Excel export failed: {str(e)}")
