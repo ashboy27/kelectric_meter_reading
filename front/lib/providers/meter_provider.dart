@@ -45,10 +45,13 @@ class MeterProvider extends ChangeNotifier {
     return _starts['$meterId-$year-$month']! >0.01;
   }
 
-
+  Future<Map<String, dynamic>> fetchMonthlyData(String meterId, int year, int month) {
+    return _api.fetchMonthlyData(meterId, year, month);
+  }
   Future<void> loadMonthly(String meterId, int year, int month) async {
     try {
       final data = await _api.fetchMonthlyData(meterId, year, month);
+
       final key = _key(meterId, year, month);
 
       // 1) Start reading
@@ -124,8 +127,8 @@ class MeterProvider extends ChangeNotifier {
       throw StateError('Please set the start reading first.');
     }
 
-    final now = DateTime.now();
-    final dayStr   = now.day.toString().padLeft(2, '0');
+
+    const dayStr   = "01";
     final monthStr = month.toString().padLeft(2, '0');
     final yearStr  = year.toString();
     final isoDate  = '$yearStr-$monthStr-$dayStr';

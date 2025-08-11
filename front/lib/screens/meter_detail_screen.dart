@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-
 import '../models/meter.dart';
 import '../models/entry.dart';
 import '../providers/meter_provider.dart';
@@ -19,7 +18,6 @@ class _MeterDetailScreenState extends State<MeterDetailScreen>
   late int selectedYear;
   late int selectedMonth;
   final _readingController = TextEditingController();
-
   // For posting date fields
   final _postingDayController = TextEditingController();
   final _postingMonthController = TextEditingController();
@@ -108,6 +106,113 @@ class _MeterDetailScreenState extends State<MeterDetailScreen>
       }
     }
   }
+  Future<void> _updateStartReading() async {
+    _readingController.clear();
+
+    final prov = context.read<MeterProvider>();
+    final monthlyData = await prov.fetchMonthlyData(
+      widget.meter.id,
+      selectedYear,
+      selectedMonth,
+    );
+
+    final entries = monthlyData['entries'] as List<Entry>;
+    //entries.sort((a, b) => a.time.compareTo(b.time)); // Oldest first
+
+    final result = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Update Start Reading'),
+        content: TextField(
+          controller: _readingController,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'Initial units'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final v = double.tryParse(_readingController.text);
+              if (v != null) Navigator.pop(ctx, v);
+            },
+            child: const Text("Set"),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null) {
+      // Validation before sending API request
+      if (entries.isNotEmpty) {
+        final oldestEntry = entries.last; // Because we sorted
+        final formattedDate = DateFormat('dd MMM yyyy').format(oldestEntry.time);
+        final formattedTime = DateFormat.jm().format(oldestEntry.time);
+        if (result > oldestEntry.reading) {
+          showDialog(
+            context: context,
+            builder: (_) => AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.error_outline, color: Colors.orange, size: 28),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      "Invalid Start Reading",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.orange,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: 320,
+                child: Text(
+                  "Start reading must be less than the oldest entry's reading "
+                      "(${oldestEntry.reading}) recorded on "
+                      "$formattedDate at $formattedTime.",
+                ),
+              ),
+              actions: [
+                TextButton(
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    backgroundColor: Colors.orange,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("OK"),
+                ),
+              ],
+            ),
+          );
+          return;
+        }
+      }
+
+      // ✅ Passed validation → update
+      try {
+        await prov.setStart(widget.meter.id, selectedYear, selectedMonth, result);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Start reading set")),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString()), backgroundColor: alertColor),
+        );
+      }
+    }
+  }
 
   Future<void> _addReadingManually() async {
     _readingController.clear();
@@ -115,135 +220,139 @@ class _MeterDetailScreenState extends State<MeterDetailScreen>
     _postingMonthController.clear();
     _postingYearController.clear();
     final prov = context.read<MeterProvider>();
+    final monthlyData = await prov.fetchMonthlyData(widget.meter.id, selectedYear, selectedMonth);
+    final entries = monthlyData['entries'] as List<Entry>;
+    //entries.sort((a, b) => a.time.compareTo(b.time));
 
+    final startReading = monthlyData['start_reading'] as double? ?? 0.0;
     final res = await showDialog<List<Object>>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Manual Reading'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _readingController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'Reading Value'),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _postingDayController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'Day'),
+        content: SizedBox(
+          width: 400, // Set dialog width to prevent overflow
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _readingController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Reading Value'),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _postingDayController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'Day'),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: DropdownButtonFormField<int>(
-                    decoration: const InputDecoration(labelText: 'Month'),
-                    // pre‑select the current posting‑month number if you like:
-                    value: _postingMonthController.text.isNotEmpty
-                        ? int.tryParse(_postingMonthController.text)
-                        : null,
-                    items: List.generate(12, (i) => i + 1)
-                        .map((m) => DropdownMenuItem(
-                      value: m,
-                      child: Text(m.toString().padLeft(2, '0')), // "01", "02", … "12"
-                    ))
-                        .toList(),
-                    onChanged: (sel) {
-                      if (sel != null) {
-                        _postingMonthController.text = sel.toString();
-                      }
-                    },
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 2, // Give month dropdown more space
+                    child: DropdownButtonFormField<int>(
+                      decoration: const InputDecoration(labelText: 'Month'),
+                      isExpanded: true,
+                      value: _postingMonthController.text.isNotEmpty
+                          ? int.tryParse(_postingMonthController.text)
+                          : null,
+                      items: List.generate(12, (i) => i + 1)
+                          .map((m) => DropdownMenuItem(
+                        value: m,
+                        child: Text(_monthStringToInt(m - 1)),
+                      ))
+                          .toList(),
+                      onChanged: (sel) {
+                        if (sel != null) {
+                          _postingMonthController.text = sel.toString();
+                        }
+                      },
+                    ),
                   ),
-                ),
-
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: _postingYearController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'Year'),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: _postingYearController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'Year'),
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              "Posting date is optional. Leave all empty for today's date.\nIf you fill any field, you must fill all three.",
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-          ],
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                "Posting date is optional. Leave all empty for today's date.\nIf you fill any field, you must fill all three.",
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               final readingVal = double.tryParse(_readingController.text);
               final dayStr = _postingDayController.text.trim();
               final monthStr = _postingMonthController.text.trim();
               final yearStr = _postingYearController.text.trim();
-              debugPrint("ASHAR2: $dayStr, $monthStr, $yearStr");
               final anyFilled = dayStr.isNotEmpty || monthStr.isNotEmpty || yearStr.isNotEmpty;
               final allFilled = dayStr.isNotEmpty && monthStr.isNotEmpty && yearStr.isNotEmpty;
-
-
+              String? errorMessage;
 
               if (readingVal == null) {
-                ScaffoldMessenger.of(ctx).showSnackBar(
-                  const SnackBar(content: Text("Please enter a valid reading value")),
+                errorMessage = "Please enter a valid reading value";
+              } else if (readingVal < 0) {
+                errorMessage = "Reading Value cannot be negative";
+              } else if (readingVal < 1.0) {
+                errorMessage = "Reading Value must be at least 1.0";
+              } else if (anyFilled && !allFilled) {
+                errorMessage = "Either leave all date fields empty or fill all three";
+              } else if (allFilled) {
+                final day = int.tryParse(dayStr);
+                final month = int.tryParse(monthStr);
+                final year = int.tryParse(yearStr);
+
+                if (day == null || month == null || year == null) {
+                  errorMessage = "Day, month, and year must be numeric";
+                } else if (year <= 0) {
+                  errorMessage = "Year must be greater than 0";
+                } else if (month < 1 || month > 12) {
+                  errorMessage = "Month must be between 1 and 12";
+                } else {
+                  final lastDay = DateTime(year, month + 1, 0).day;
+                  if (day < 1 || day > lastDay) {
+                    errorMessage = "Day must be between 1 and $lastDay";
+                  }
+                }
+              }
+
+              if (errorMessage != null) {
+                await showDialog(
+                  context: ctx,
+                  builder: (context) => AlertDialog(
+                    title: const Text("Error"),
+                    content: Text(errorMessage!),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text("OK"),
+                      ),
+                    ],
+                  ),
                 );
                 return;
               }
-              if (anyFilled && !allFilled) {
-                ScaffoldMessenger.of(ctx).showSnackBar(
-                  const SnackBar(content: Text("Either leave all date fields empty or fill all three")),
-                );
-                return;
-              }
-              if (allFilled) {
 
-              final day   = int.tryParse(dayStr);
-              final month = int.tryParse(monthStr);
-              final year  = int.tryParse(yearStr);
-
-              if (day == null || month == null || year == null) {
-              ScaffoldMessenger.of(ctx).showSnackBar(
-              const SnackBar(content: Text("Day, month, and year must be numeric")),
-              );
-              return;
-              }
-              if (year <= 0) {
-              ScaffoldMessenger.of(ctx).showSnackBar(
-              const SnackBar(content: Text("Year must be greater than 0")),
-              );
-              return;
-              }
-              if (month < 1 || month > 12) {
-              ScaffoldMessenger.of(ctx).showSnackBar(
-              const SnackBar(content: Text("Month must be between 1 and 12")),
-              );
-              return;
-              }
-              // compute this month’s max day:
-              final lastDay = DateTime(year, month + 1, 0).day;
-              if (day < 1 || day > lastDay) {
-              ScaffoldMessenger.of(ctx).showSnackBar(
-              SnackBar(content: Text("Day must be between 1 and $lastDay")),
-              );
-              return;
-              }
-              }
-
-              Navigator.pop(ctx, <Object>[readingVal, dayStr, monthStr, yearStr]);
+              Navigator.pop(ctx, <Object>[readingVal as double, dayStr, monthStr, yearStr]);
             },
             child: const Text("Add"),
           ),
         ],
       ),
     );
+
 
     if (res == null) return;
 
@@ -255,10 +364,8 @@ class _MeterDetailScreenState extends State<MeterDetailScreen>
 
     // Determine postingDate
     DateTime postingDate;
-    debugPrint("ASHAR1");
     if (dayStr.isEmpty && monthStr.isEmpty && yearStr.isEmpty) {
       postingDate = DateTime.now();
-
     } else {
       final d = int.tryParse(dayStr);
       final m = int.tryParse(monthStr);
@@ -269,20 +376,85 @@ class _MeterDetailScreenState extends State<MeterDetailScreen>
         );
         return;
       }
-      // preserve current time-of-day
-
-      postingDate = DateTime(y, m, d);
+      final now = DateTime.now();
+      postingDate = DateTime(y, m, d,now.hour, now.minute, now.second);
     }
-
-    // Build the ISO strings
-    final now = DateTime.now();
-    final isoReadingDate =
-        '$selectedYear-${selectedMonth.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    final isoPostingDate =
-        '${postingDate.year}-${postingDate.month.toString().padLeft(2, '0')}-${postingDate.day.toString().padLeft(2, '0')}';
-
+    //print("AHSARRRRRRRRRRRR $postingDate $selectedMonth $selectedYear");
+    // Fetch monthly data for validation
     try {
-      await context.read<MeterProvider>().addEntry(
+
+
+
+
+
+      if(entries.isEmpty){
+
+        // If no entries, we can safely add the first reading
+        if (readingVal < startReading) {
+          showStartReadingErrorDialog(
+            context: context,
+            enteredValue: readingVal,
+            startReading: startReading,
+          );
+          return;
+        }
+
+      }
+
+      else {
+
+
+
+        Entry? justGreater;
+        Entry? justSmaller;
+
+        for (var e in entries.reversed) {
+          if (e.time.isAfter(postingDate)) {
+            justGreater = e;
+            break; // first greater found
+          }
+          if (e.time.isBefore(postingDate)) {
+            justSmaller = e; // keeps updating until the latest before
+          }
+        }
+
+        if (justGreater != null && readingVal > justGreater.reading) {
+          showReadingErrorDialog(
+            context: context,
+            readingValue: readingVal,
+            minAllowed: justSmaller?.reading ?? startReading,
+            minTime: justSmaller?.time,
+            maxAllowed: justGreater.reading,
+            maxTime: justGreater.time,
+          );
+          return;
+        }
+
+        // JUST SMALLER check
+        final smallerValue = justSmaller?.reading ?? startReading;
+        if (readingVal < smallerValue) {
+          showReadingErrorDialog(
+            context: context,
+            readingValue: readingVal,
+            minAllowed: justSmaller?.reading ?? startReading,
+            minTime: justSmaller?.time,
+            maxAllowed: justGreater?.reading,
+            maxTime: justGreater?.time,
+          );
+          return;
+        }
+
+
+
+      }
+
+      // Build the ISO strings
+
+
+      final isoPostingDate =
+          '${postingDate.year}-${postingDate.month.toString().padLeft(2, '0')}-${postingDate.day.toString().padLeft(2, '0')}';
+
+      await prov.addEntry(
         widget.meter.id,
         selectedYear,
         selectedMonth,
@@ -297,15 +469,12 @@ class _MeterDetailScreenState extends State<MeterDetailScreen>
       );
     }
   }
-
-
-  int? _monthStringToInt(String month) {
+  String _monthStringToInt(int index) {
     final months = [
       'January', 'February', 'March', 'April', 'May', 'June',
       'July', 'August', 'September', 'October', 'November', 'December'
     ];
-    final idx = months.indexWhere((m) => m.toLowerCase() == month.toLowerCase());
-    return idx == -1 ? null : idx + 1;
+    return months[index];
   }
 
   void _showAddReadingOptions() {
@@ -410,7 +579,7 @@ class _MeterDetailScreenState extends State<MeterDetailScreen>
                         decoration: _inputStyle('Month'),
                         value: selectedMonth,
                         items: prov.getMonthNames().asMap().entries.map((e) {
-                          return DropdownMenuItem(value: e.key + 1, child: Text(e.value));
+                          return DropdownMenuItem(value: e.key + 1, child: Text(_monthStringToInt(e.key)));
                         }).toList(),
                         onChanged: (v) {
                           if (v != null) {
@@ -442,8 +611,15 @@ class _MeterDetailScreenState extends State<MeterDetailScreen>
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _infoCard("Start", '${start.toStringAsFixed(1)}'),
-                    _infoCard("Usage", '${usage.toStringAsFixed(1)}'),
+                    _infoCard(
+                      "Start",
+                      '${start.toStringAsFixed(0)} units',
+                      onEdit: () {
+                        // Your edit function call here
+                        _updateStartReading(); // Replace with your actual function name
+                      },
+                    ),
+                    _infoCard("Usage", '${usage.toStringAsFixed(0)} units'),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -485,15 +661,23 @@ class _MeterDetailScreenState extends State<MeterDetailScreen>
                   elevation: 3,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   child: ListTile(
-                    leading: Icon(Icons.bolt, color: primaryColor),
+                    leading: const Icon(Icons.bolt, color: primaryColor),
                     title: Text(
-                      '${e.reading.toStringAsFixed(1)} units',
+                      '${e.reading.toStringAsFixed(0)} units',
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                     ),
-                    subtitle: Text(
-                      '${DateFormat.yMMMd().format(e.time)} '
-                          'at ${DateFormat('hh:mm:ss a').format(e.time)}',
-                      style: const TextStyle(fontSize: 14),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${DateFormat.yMMMd().format(e.time)} at ${DateFormat('hh:mm:ss a').format(e.time)}',
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                        Text(
+                          'Used: ${(e.reading - start).toStringAsFixed(0)} units',
+                          style: const TextStyle(fontSize: 13, color: Colors.blueGrey),
+                        ),
+                      ],
                     ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -507,8 +691,12 @@ class _MeterDetailScreenState extends State<MeterDetailScreen>
                                 title: const Text('Delete Entry?'),
                                 content: const Text('Are you sure you want to delete this reading?'),
                                 actions: [
-                                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                                  ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+                                  TextButton(
+                                      onPressed: () => Navigator.pop(ctx, false),
+                                      child: const Text('Cancel')),
+                                  ElevatedButton(
+                                      onPressed: () => Navigator.pop(ctx, true),
+                                      child: const Text('Delete')),
                                 ],
                               ),
                             );
@@ -529,9 +717,9 @@ class _MeterDetailScreenState extends State<MeterDetailScreen>
                             }
                           },
                         ),
-                        const Icon(Icons.chevron_right, color: Colors.grey),
                       ],
                     ),
+
                   ),
                 );
               },
@@ -542,13 +730,197 @@ class _MeterDetailScreenState extends State<MeterDetailScreen>
     );
   }
 
-  Widget _infoCard(String title, String value) {
+
+// Updated _infoCard function with optional edit button
+  Widget _infoCard(String title, String value, {VoidCallback? onEdit}) {
     return Column(
       children: [
-        Text(title, style: const TextStyle(fontSize: 14, color: Colors.grey)),
+        Container(
+          height: 32, // Fixed height to ensure alignment
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(title, style: const TextStyle(fontSize: 18, color: Colors.grey)),
+              if (onEdit != null) ...[
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: onEdit,
+                  child: Container(
+                    padding: const EdgeInsets.all(8), // Increases tap area
+                    child: const Icon(
+                      Icons.edit,
+                      size: 16,
+                      color: Colors.blue,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
         const SizedBox(height: 4),
         Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
       ],
     );
   }
+
+  void showReadingErrorDialog({required BuildContext context, required readingValue, required double minAllowed, DateTime? minTime, required double? maxAllowed, required DateTime? maxTime}) {
+
+
+
+    final dateTimeFormat = DateFormat("dd MMM yyyy • hh:mm a");
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 28),
+            SizedBox(width: 8),
+            Text(
+              "Invalid Reading",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.redAccent,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "You entered: $readingValue",
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (minAllowed != double.negativeInfinity)
+                    Text(
+                      "Min allowed: $minAllowed"
+                          "${minTime != null ? " (${dateTimeFormat.format(minTime)})" : ""}",
+                      style: TextStyle(fontSize: 14, color: Colors.green.shade700),
+                    ),
+                  if (maxAllowed != null)
+                    const SizedBox(height: 8),
+                  if (maxAllowed != null)
+                    Text(
+                      "Max allowed: $maxAllowed"
+                          "${maxTime != null ? " (${dateTimeFormat.format(maxTime)})" : ""}",
+                      style: TextStyle(fontSize: 14, color: Colors.red.shade700),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              "Please enter a value within the allowed range.",
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white,
+              backgroundColor: Colors.redAccent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: const Text("OK"),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void showStartReadingErrorDialog({
+    required BuildContext context,
+    required double enteredValue,
+    required double startReading,
+  }) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.error_outline, color: Colors.orange, size: 28),
+            SizedBox(width: 8),
+            Expanded(
+            child:Text(
+              "Invalid First Reading",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.orange,
+              ),
+            ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 400, // 👈 Makes dialog wider
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "You entered: $enteredValue",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+              ),
+              SizedBox(height: 12),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: EdgeInsets.all(12),
+                child: Text(
+                  "Kia yar Ahsan Bhai! First reading must be greater than the start reading: $startReading",
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.orange.shade800,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white,
+              backgroundColor: Colors.orange,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: Text("OK"),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+
+
 }

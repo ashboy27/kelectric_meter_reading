@@ -4,6 +4,12 @@ import '../constants.dart';
 import '../models/home_summary.dart';
 import '../models/meter.dart';
 import '../models/entry.dart';
+import 'dart:io';
+import 'package:dio/dio.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class ApiService {
   final http.Client _client;
@@ -115,5 +121,60 @@ class ApiService {
       throw Exception('Failed to delete entry (${res.statusCode}): ${res.body}');
     }
   }
+  /// Toggles the `is_frozen` state on the server.
+  Future<bool> toggleFreeze(String meterId, bool freeze) async {
+    final uri = Uri.parse('$BASE_URL/home/$HOME_ID/meters/$meterId/freeze');
+    final res = await _client.patch(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({'freeze': freeze}),
+    );
+    if (res.statusCode != 200) {
+      throw Exception('Failed to toggle freeze (${res.statusCode}): ${res.body}');
+    }
+    final data = json.decode(res.body) as Map<String, dynamic>;
+    return data['is_frozen'] as bool;
+  }
+
+  Future<String> downloadMeterExcel(String meterId,String meterName, {int? year}) async {
+    try {
+      // Request storage permission
+      if (Platform.isAndroid) {
+        await Permission.storage.request();
+      }
+
+      final currentYear = year ?? DateTime.now().year;
+      final url = '$BASE_URL/home/$HOME_ID/meters/$meterId/export-excel?year=$currentYear&meter_name=$meterName';
+
+
+      // Get downloads directory
+      Directory? directory;
+      if (Platform.isAndroid) {
+        directory = Directory('/storage/emulated/0/Download');
+      } else {
+        directory = await getApplicationDocumentsDirectory();
+      }
+
+      final filename = '${meterName}_${currentYear}_report.xlsx';
+      final filePath = '${directory.path}/$filename';
+      final _dio = Dio();
+      await _dio.download(
+        url,
+        filePath,
+        onReceiveProgress: (received, total) {
+          if (total != -1) {
+            final progress = (received / total * 100).toStringAsFixed(1);
+            print('Download progress: $progress%');
+          }
+        },
+      );
+
+
+      return filePath;
+    } catch (e) {
+      throw Exception('Download failed: $e');
+    }
+  }
+
 
 }
